@@ -2,17 +2,12 @@ const { EmbedBuilder, ApplicationCommandOptionType } = require("discord.js");
 const { OWNER_IDS, PREFIX_COMMANDS, EMBED_COLORS } = require("@root/config");
 const { parsePermissions } = require("@helpers/Utils");
 const { timeformat } = require("@helpers/Utils");
-const { getSettings } = require("@schemas/Guild");
 
 const cooldownCache = new Map();
 
 module.exports = {
-  /**
-   * @param {import('discord.js').Message} message
-   * @param {import("@structures/Command")} cmd
-   * @param {object} settings
-   */
-  handlePrefixCommand: async function (message, cmd, settings) {
+  handlePrefixCommand: async function (message, cmd, client) {
+    const settings = client.db.get(`guild_${message.guild.id}`) || { prefix: PREFIX_COMMANDS.DEFAULT_PREFIX };
     const prefix = settings.prefix;
     const args = message.content.replace(prefix, "").split(/\s+/);
     const invoke = args.shift().toLowerCase();
@@ -24,7 +19,6 @@ module.exports = {
 
     if (!message.channel.permissionsFor(message.guild.members.me).has("SendMessages")) return;
 
-    // callback validations
     if (cmd.validations) {
       for (const validation of cmd.validations) {
         if (!validation.callback(message)) {
@@ -33,32 +27,27 @@ module.exports = {
       }
     }
 
-    // Owner commands
     if (cmd.category === "OWNER" && !OWNER_IDS.includes(message.author.id)) {
       return message.safeReply("This command is only accessible to bot owners");
     }
 
-    // check user permissions
     if (cmd.userPermissions && cmd.userPermissions?.length > 0) {
       if (!message.channel.permissionsFor(message.member).has(cmd.userPermissions)) {
         return message.safeReply(`You need ${parsePermissions(cmd.userPermissions)} for this command`);
       }
     }
 
-    // check bot permissions
     if (cmd.botPermissions && cmd.botPermissions.length > 0) {
       if (!message.channel.permissionsFor(message.guild.members.me).has(cmd.botPermissions)) {
         return message.safeReply(`I need ${parsePermissions(cmd.botPermissions)} for this command`);
       }
     }
 
-    // minArgs count
     if (cmd.command.minArgsCount > args.length) {
       const usageEmbed = this.getCommandUsage(cmd, prefix, invoke);
       return message.safeReply({ embeds: [usageEmbed] });
     }
 
-    // cooldown check
     if (cmd.cooldown > 0) {
       const remaining = getRemainingCooldown(message.author.id, cmd);
       if (remaining > 0) {
@@ -76,14 +65,12 @@ module.exports = {
     }
   },
 
-  /**
-   * @param {import('discord.js').ChatInputCommandInteraction} interaction
-   */
-  handleSlashCommand: async function (interaction) {
+  handleSlashCommand: async function (interaction, client) {
     const cmd = interaction.client.slashCommands.get(interaction.commandName);
     if (!cmd) return interaction.reply({ content: "An error has occurred", ephemeral: true }).catch(() => {});
 
-    // callback validations
+    const settings = client.db.get(`guild_${interaction.guild.id}`) || { prefix: PREFIX_COMMANDS.DEFAULT_PREFIX };
+
     if (cmd.validations) {
       for (const validation of cmd.validations) {
         if (!validation.callback(interaction)) {
@@ -95,7 +82,6 @@ module.exports = {
       }
     }
 
-    // Owner commands
     if (cmd.category === "OWNER" && !OWNER_IDS.includes(interaction.user.id)) {
       return interaction.reply({
         content: `This command is only accessible to bot owners`,
@@ -103,7 +89,6 @@ module.exports = {
       });
     }
 
-    // user permissions
     if (interaction.member && cmd.userPermissions?.length > 0) {
       if (!interaction.member.permissions.has(cmd.userPermissions)) {
         return interaction.reply({
@@ -113,7 +98,6 @@ module.exports = {
       }
     }
 
-    // bot permissions
     if (cmd.botPermissions && cmd.botPermissions.length > 0) {
       if (!interaction.guild.members.me.permissions.has(cmd.botPermissions)) {
         return interaction.reply({
@@ -123,7 +107,6 @@ module.exports = {
       }
     }
 
-    // cooldown check
     if (cmd.cooldown > 0) {
       const remaining = getRemainingCooldown(interaction.user.id, cmd);
       if (remaining > 0) {
@@ -136,7 +119,6 @@ module.exports = {
 
     try {
       await interaction.deferReply({ ephemeral: cmd.slashCommand.ephemeral });
-      const settings = await getSettings(interaction.guild);
       await cmd.interactionRun(interaction, { settings });
     } catch (ex) {
       await interaction.followUp("Oops! An error occurred while running the command");
@@ -146,13 +128,6 @@ module.exports = {
     }
   },
 
-  /**
-   * Build a usage embed for this command
-   * @param {import('@structures/Command')} cmd - command object
-   * @param {string} prefix - guild bot prefix
-   * @param {string} invoke - alias that was used to trigger this command
-   * @param {string} [title] - the embed title
-   */
   getCommandUsage(cmd, prefix = PREFIX_COMMANDS.DEFAULT_PREFIX, invoke, title = "Usage") {
     let desc = "";
     if (cmd.command.subcommands && cmd.command.subcommands.length > 0) {
@@ -173,9 +148,6 @@ module.exports = {
     return embed;
   },
 
-  /**
-   * @param {import('@structures/Command')} cmd - command object
-   */
   getSlashUsage(cmd) {
     let desc = "";
     if (cmd.slashCommand.options?.find((o) => o.type === ApplicationCommandOptionType.Subcommand)) {
@@ -195,19 +167,11 @@ module.exports = {
   },
 };
 
-/**
- * @param {string} memberId
- * @param {object} cmd
- */
 function applyCooldown(memberId, cmd) {
   const key = cmd.name + "|" + memberId;
   cooldownCache.set(key, Date.now());
 }
 
-/**
- * @param {string} memberId
- * @param {object} cmd
- */
 function getRemainingCooldown(memberId, cmd) {
   const key = cmd.name + "|" + memberId;
   if (cooldownCache.has(key)) {
