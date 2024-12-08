@@ -1,4 +1,4 @@
-const { ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField } = require('discord.js');
 
 module.exports = async (client, guild) => {
     if (!guild || !guild.id) return;  
@@ -70,7 +70,7 @@ module.exports = async (client, guild) => {
 
     const randomWelcomeMessage = welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)];
 
-    const welcomeEmbed = new EmbedBuilder()
+    const welcomeEmbed = new client.emb()
         .setColor("Blue")
         .setTitle("Thanks for Inviting CodeX!")
         .setDescription(`
