@@ -16,7 +16,7 @@ const CommandCategory = require("./CommandCategory");
 const lavaclient = require("../handlers/lavaclient");
 const giveawaysHandler = require("../handlers/giveaway");
 const { DiscordTogether } = require("discord-together");
-
+const database = require("sandbox.db");
 module.exports = class BotClient extends Client {
   constructor() {
     super({
@@ -36,7 +36,7 @@ module.exports = class BotClient extends Client {
       },
       restRequestTimeout: 20000,
     });
-
+    this.database = new database("../../../json.sqlite");
     this.wait = require("util").promisify(setTimeout); // await client.wait(1000) - Wait 1 second
     this.config = require("@root/config"); // load the config file
 
@@ -70,9 +70,6 @@ module.exports = class BotClient extends Client {
 
     // Logger
     this.logger = Logger;
-
-    // Database
-    this.database = schemas;
 
     // Discord Together
     this.discordTogether = new DiscordTogether(this);
