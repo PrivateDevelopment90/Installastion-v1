@@ -1,49 +1,41 @@
-const { EmbedBuilder } = require("discord.js");
-const { getSettings: registerGuild } = require("@schemas/Guild");
-
-/**
- * @param {import('@src/structures').BotClient} client
- * @param {import('discord.js').Guild} guild
- */
 module.exports = async (client, guild) => {
-  if (!guild.available) return;
-  if (!guild.members.cache.has(guild.ownerId)) await guild.fetchOwner({ cache: true }).catch(() => {});
-  client.logger.log(`Guild Joined: ${guild.name} Members: ${guild.memberCount}`);
-  await registerGuild(guild);
+    if (!guild.name) return;
 
-  if (!client.joinLeaveWebhook) return;
+    client.logger.log(`Left : ${guild.name} | ${guild.memberCount}`, 'guild');
 
-  const embed = new EmbedBuilder()
-    .setTitle("Guild Joined")
-    .setThumbnail(guild.iconURL())
-    .setColor(client.config.EMBED_COLORS.SUCCESS)
-    .addFields(
-      {
-        name: "Guild Name",
-        value: guild.name,
-        inline: false,
-      },
-      {
-        name: "ID",
-        value: guild.id,
-        inline: false,
-      },
-      {
-        name: "Owner",
-        value: `${client.users.cache.get(guild.ownerId).tag} [\`${guild.ownerId}\`]`,
-        inline: false,
-      },
-      {
-        name: "Members",
-        value: `\`\`\`yaml\n${guild.memberCount}\`\`\``,
-        inline: false,
-      }
-    )
-    .setFooter({ text: `Guild #${client.guilds.cache.size}` });
+    // Delete guild-related data from your database
+    client.db.delete(`prefix_${guild.id}`);
+    client.db.delete(`wlUser_${guild.id}`);
+    client.db.delete(`exown_${guild.id}`);
+    client.db.delete(`wlRole_${guild.id}`);
 
-  client.joinLeaveWebhook.send({
-    username: "Join",
-    avatarURL: client.user.displayAvatarURL(),
-    embeds: [embed],
-  });
+    try {
+        // Fetch the server owner
+        let own = await guild.fetchOwner();
+
+        // Find the channel where you want to send the embed (replace 'channelID' with actual channel ID)
+        const leaveChannel = await client.channels.fetch('1299579753023410269');
+        if (!leaveChannel) {
+            client.logger.log('Leave channel not found!', 'error');
+            return;
+        }
+
+        // embed for guild Delete
+       const emb = new client.emb().desc("Removed From A Server!").setThumbnail(client.user.displayAvatarURL({dynmaic : true})).setTimestamp().setAuthor({name : `CodeX` , iconURL : guild.iconURL({dynmaic : true})}).addFields([
+                {name : `Server Name` , value : `**\`${guild.name}\`**`},
+                {name : `Server Owner` , value : `**\`${guild.members.cache.get(own.id) ? guild.members.cache.get(own.id).user.tag : "Unknown User"}\`**`},
+                {name : `Server Members` , value : `**\`${guild.memberCount}\`**`},
+              {
+                name: `Cluster Stats **[${guild.shardId}]**`,
+                value: `**\`${client.guilds.cache.size} Guilds\`** | **\`${client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount,0,)} Users\`**`
+              }
+                ])
+        
+        // Send the embed to the 'leave' channel
+        await leaveChannel.send({ embeds: [embed] });
+
+    } catch (error) {
+        // Catch any errors related to fetching owner, channel, or sending the embed
+        client.logger.log(`Failed to send embed to leave channel: ${error.message}`, 'error');
+    }
 };
